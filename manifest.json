@@ -1,0 +1,18 @@
+{
+  "name": "CcF Clock",
+  "short_name": "CcF Clock",
+  "description": "Full-screen dark clock with weather & calendar — by Chip",
+  "start_url": "./index.html",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%23000'/%3E%3Ccircle cx='256' cy='256' r='200' fill='none' stroke='%23fff' stroke-width='20'/%3E%3Cline x1='256' y1='256' x2='256' y2='100' stroke='%23fff' stroke-width='16' stroke-linecap='round'/%3E%3Cline x1='256' y1='256' x2='380' y2='256' stroke='%23fff' stroke-width='16' stroke-linecap='round'/%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
