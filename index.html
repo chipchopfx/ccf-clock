@@ -124,8 +124,8 @@
     #wx-emoji  { font-size:20px; line-height:1; }
     #wx-temp   { font-size:24px; font-weight:700; color:var(--clk); line-height:1; transition:color .5s; }
     #wx-desc   { font-size:10px; color:var(--ctxt); transition:color .5s; }
-    #wx-detail { font-size:9px; color:var(--sec); transition:color .5s; }
-    #wx-city   { font-size:8px; color:var(--sec); letter-spacing:.05em; }
+    #wx-detail { font-size:9px; color:var(--acc); transition:color .5s; }
+    #wx-city   { font-size:9px; color:var(--acc); letter-spacing:.05em; font-weight:500; }
 
     /* Forecast chips row */
     #wx-forecast {
@@ -143,7 +143,7 @@
       padding: 3px 7px;
       min-width: 44px;
     }
-    .fc-time  { font-size:8px; color:var(--sec); }
+    .fc-time  { font-size:8px; color:var(--acc); }
     .fc-icon  { font-size:14px; line-height:1.1; }
     .fc-temp  { font-size:10px; font-weight:600; color:var(--acc); transition:color .5s; }
     .fc-rain  { font-size:8px; color:#66aaff; }
@@ -230,6 +230,31 @@
     .btn-test    { background:#1a3a1a; font-size:12px; padding:9px; }
     .s-btn:active { opacity:.8; }
 
+    /* ── Brightness tip banner ── */
+    #dim-banner {
+      position:fixed; top:0; left:0; right:0; z-index:300;
+      background:linear-gradient(135deg,#001830,#002850);
+      border-bottom:1px solid #004080;
+      padding:10px 14px 10px 14px;
+      display:flex; align-items:flex-start; gap:10px;
+    }
+    #dim-banner-text {
+      flex:1; font-size:11px; color:#88bbee; line-height:1.65;
+    }
+    #dim-banner-text strong { color:#99ddff; }
+    #dim-banner-close {
+      background:none; border:1px solid #004080; border-radius:8px;
+      color:#66aadd; font-size:11px; padding:4px 10px; cursor:pointer;
+      white-space:nowrap; flex-shrink:0; margin-top:1px;
+    }
+
+    .ios-tip-box {
+      background:#001428; border:1px solid #003060; border-radius:8px;
+      padding:10px 12px; font-size:11px; color:#77aacc;
+      line-height:1.65; margin:2px 0 6px;
+    }
+    .ios-tip-box strong { color:#99ccff; }
+
     @media (max-height:380px) {
       #time { font-size:clamp(80px,15vw,120px); }
       #clock-area { padding-bottom:10px; }
@@ -238,6 +263,17 @@
 </head>
 
 <body>
+
+<!-- First-launch brightness tip — hidden after user dismisses -->
+<div id="dim-banner" style="display:none">
+  <div id="dim-banner-text">
+    💡 <strong>Supaya layar tidak meredup otomatis:</strong><br>
+    ① <strong>Settings → Display &amp; Brightness → Auto-Lock → Never</strong><br>
+    ② <strong>Settings → Accessibility → Display &amp; Text Size → Auto-Brightness → OFF</strong>
+  </div>
+  <button id="dim-banner-close" onclick="dismissDimBanner()">Mengerti ✓</button>
+</div>
+
 <div id="app">
 
   <!-- TOP: settings only -->
@@ -332,6 +368,16 @@
     iPhone XS Max sudah ada fitur <strong>native</strong> di iOS 17+:<br>
     <strong>Settings → Battery → Charging Optimization → 80% Limit</strong><br>
     iOS otomatis berhenti charge di 80%. Tidak perlu root.
+  </div>
+
+  <div class="s-sec">🔆 Layar Tidak Meredup (Auto-Dim)</div>
+  <div class="ios-tip-box">
+    Dua langkah wajib supaya layar tetap menyala penuh:<br><br>
+    <strong>① Matikan Auto-Lock</strong><br>
+    Settings → Display &amp; Brightness → Auto-Lock → <strong>Never</strong><br><br>
+    <strong>② Matikan Auto-Brightness</strong><br>
+    Settings → Accessibility → Display &amp; Text Size → Auto-Brightness → <strong>OFF</strong><br><br>
+    App ini juga mengaktifkan <em>Wake Lock</em> &amp; silent audio saat dibuka untuk membantu layar tetap aktif.
   </div>
 
   <button class="s-btn btn-primary" onclick="saveSettings()">Simpan &amp; Terapkan</button>
@@ -594,6 +640,54 @@ function applyVis() {
 
 document.getElementById('overlay').addEventListener('click', e => { if (e.target.id==='overlay') closeSettings(); });
 
+// ─── DIM BANNER ────────────────────────────────────────────────────
+/*
+  Show once on first launch. Key: 'ccf_nodim'.
+  After dismiss, never show again.
+*/
+function initDimBanner() {
+  try {
+    if (!localStorage.getItem('ccf_nodim')) {
+      document.getElementById('dim-banner').style.display = 'flex';
+    }
+  } catch(_) {}
+}
+function dismissDimBanner() {
+  document.getElementById('dim-banner').style.display = 'none';
+  try { localStorage.setItem('ccf_nodim','1'); } catch(_){}
+}
+
+// ─── SILENT AUDIO (anti-dim trick) ─────────────────────────────────
+/*
+  iOS can dim the screen despite Wake Lock if there is no audio session.
+  Playing a silent audio buffer in a loop keeps the audio session alive,
+  which combined with Wake Lock gives the best chance of keeping the
+  screen at full brightness.
+  Must be triggered by a user gesture (tap/click) — iOS requirement.
+*/
+let audioCtxStarted = false;
+function startSilentAudio() {
+  if (audioCtxStarted) return;
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const buf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate); // 1s silence
+    function loop() {
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.onended = loop;
+      src.start();
+    }
+    loop();
+    audioCtxStarted = true;
+  } catch(_){}
+}
+// Activate on first user interaction
+document.addEventListener('click',     startSilentAudio, {once:false});
+document.addEventListener('touchstart',startSilentAudio, {once:false});
+
 // ─── BOOT ──────────────────────────────────────────────────────────
 (function boot() {
   load();
@@ -602,6 +696,7 @@ document.getElementById('overlay').addEventListener('click', e => { if (e.target
   tick();
   setInterval(tick, 1000);
   keepAwake();
+  initDimBanner();
   setTimeout(()=>fetchWeather(),  500);
   setTimeout(()=>fetchCalendar(), 1000);
   setInterval(()=>fetchWeather(),  15*60_000);
