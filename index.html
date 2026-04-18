@@ -148,6 +148,15 @@
     .fc-temp  { font-size:10px; font-weight:600; color:var(--acc); transition:color .5s; }
     .fc-rain  { font-size:8px; color:#66aaff; }
 
+    /* ── Background image overlay ── */
+    #bg-img {
+      position:fixed; inset:0; z-index:0;
+      background-size:cover; background-position:center;
+      background-repeat:no-repeat;
+      transition:opacity .5s;
+    }
+    #app { position:relative; z-index:1; }
+
     /* ═══════════════════════════════════════
        SETTINGS OVERLAY
        ═══════════════════════════════════════ */
@@ -228,7 +237,23 @@
     }
     .btn-primary { background:#007AFF; }
     .btn-test    { background:#1a3a1a; font-size:12px; padding:9px; }
+    .btn-bg      { background:#2a2a2a; font-size:12px; padding:9px; }
+    .btn-reset   { background:#2a0a0a; font-size:12px; padding:9px; color:#ff8080; }
     .s-btn:active { opacity:.8; }
+
+    /* bg preview thumbnail */
+    #bg-preview-wrap { display:flex; align-items:center; gap:10px; margin:6px 0; }
+    #bg-thumb {
+      width:64px; height:36px; border-radius:6px; border:1px solid #383838;
+      object-fit:cover; flex-shrink:0; display:none;
+    }
+    #bg-preview-label { font-size:11px; color:#888; }
+
+    /* dim slider */
+    .dim-row { display:flex; align-items:center; gap:10px; padding:6px 0; }
+    .dim-row label { font-size:12px; color:#aaa; white-space:nowrap; }
+    .dim-row input[type=range] { flex:1; accent-color:#007AFF; }
+    #dim-val { font-size:12px; color:#aaa; width:30px; text-align:right; }
 
     /* ── Brightness tip banner ── */
     #dim-banner {
@@ -263,6 +288,12 @@
 </head>
 
 <body>
+
+<!-- Background image layer -->
+<div id="bg-img"></div>
+
+<!-- Hidden file picker for background -->
+<input type="file" id="bg-file-input" accept="image/*" style="display:none" onchange="onBgFileChosen(event)">
 
 <!-- First-launch brightness tip — hidden after user dismisses -->
 <div id="dim-banner" style="display:none">
@@ -324,6 +355,21 @@
 
   <div class="s-sec">Theme</div>
   <div class="theme-row" id="theme-row"></div>
+
+  <div class="s-sec">Background Image</div>
+  <div id="bg-preview-wrap">
+    <img id="bg-thumb" src="" alt="bg preview">
+    <span id="bg-preview-label">Solid color (default tema)</span>
+  </div>
+  <div class="dim-row" id="dim-row" style="display:none">
+    <label>Redupkan</label>
+    <input type="range" id="dim-slider" min="0" max="85" step="5" value="40" oninput="onDimSlider(this.value)">
+    <span id="dim-val">40%</span>
+  </div>
+  <div style="display:flex;gap:8px;">
+    <button class="s-btn btn-bg" style="flex:1" onclick="document.getElementById('bg-file-input').click()">🖼 Pilih Foto…</button>
+    <button class="s-btn btn-reset" style="flex:1" id="btn-bg-reset" onclick="resetBg()">✕ Hapus</button>
+  </div>
 
   <div class="s-sec">Display</div>
   <div class="tog-row">
@@ -613,6 +659,7 @@ function openSettings() {
   document.getElementById('tog-cal').checked  = C.showCal;
   setBadge(C.wxKey ? 'Configured — tap Test to verify' : 'Not configured', C.wxKey?'info':'info');
   buildThemeBtns();
+  initBgPreviewInSettings();
   document.getElementById('overlay').classList.add('open');
 }
 
@@ -639,6 +686,109 @@ function applyVis() {
 }
 
 document.getElementById('overlay').addEventListener('click', e => { if (e.target.id==='overlay') closeSettings(); });
+
+// ─── BACKGROUND IMAGE ──────────────────────────────────────────────
+/*
+  Stored in localStorage as base64 under key 'ccf_bg'.
+  Dim overlay stored under 'ccf_dim' (0-85%).
+  File is converted to compressed JPEG (quality 0.7) before storing
+  to stay well within localStorage limits (~5 MB).
+*/
+const BG_KEY  = 'ccf_bg';
+const DIM_KEY = 'ccf_dim';
+
+function applyBg(dataUrl, dimPct) {
+  const el = document.getElementById('bg-img');
+  if (!dataUrl) {
+    el.style.backgroundImage = '';
+    el.style.backgroundColor = '';
+    return;
+  }
+  const dim = dimPct !== undefined ? dimPct : 40;
+  el.style.backgroundImage = `
+    linear-gradient(rgba(0,0,0,${dim/100}),rgba(0,0,0,${dim/100})),
+    url('${dataUrl}')`;
+}
+
+function loadBg() {
+  try {
+    const data = localStorage.getItem(BG_KEY);
+    const dim  = parseInt(localStorage.getItem(DIM_KEY)||'40');
+    if (data) applyBg(data, dim);
+  } catch(_){}
+}
+
+function onBgFileChosen(evt) {
+  const file = evt.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      // Compress to JPEG max 1200px wide to save localStorage space
+      const canvas = document.createElement('canvas');
+      const scale  = Math.min(1, 1200 / img.width);
+      canvas.width  = Math.round(img.width  * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      const jpeg = canvas.toDataURL('image/jpeg', 0.75);
+      try {
+        localStorage.setItem(BG_KEY, jpeg);
+        const dim = parseInt(document.getElementById('dim-slider').value);
+        localStorage.setItem(DIM_KEY, dim);
+        applyBg(jpeg, dim);
+        updateBgPreview(jpeg, dim);
+      } catch(ex) {
+        alert('Gambar terlalu besar untuk disimpan. Coba foto dengan resolusi lebih kecil.');
+      }
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+  evt.target.value = ''; // allow re-picking same file
+}
+
+function onDimSlider(val) {
+  document.getElementById('dim-val').textContent = `${val}%`;
+  try {
+    const data = localStorage.getItem(BG_KEY);
+    if (data) { applyBg(data, parseInt(val)); localStorage.setItem(DIM_KEY, val); }
+  } catch(_){}
+}
+
+function resetBg() {
+  try { localStorage.removeItem(BG_KEY); localStorage.removeItem(DIM_KEY); } catch(_){}
+  document.getElementById('bg-img').style.backgroundImage = '';
+  updateBgPreview(null, 40);
+}
+
+function updateBgPreview(dataUrl, dimPct) {
+  const thumb  = document.getElementById('bg-thumb');
+  const label  = document.getElementById('bg-preview-label');
+  const dimRow = document.getElementById('dim-row');
+  const slider = document.getElementById('dim-slider');
+  const dimVal = document.getElementById('dim-val');
+  if (dataUrl) {
+    thumb.src = dataUrl;
+    thumb.style.display = 'block';
+    label.textContent = 'Foto terpasang ✓';
+    dimRow.style.display = 'flex';
+    slider.value = dimPct !== undefined ? dimPct : 40;
+    dimVal.textContent = `${slider.value}%`;
+  } else {
+    thumb.style.display = 'none';
+    label.textContent = 'Solid color (default tema)';
+    dimRow.style.display = 'none';
+  }
+}
+
+function initBgPreviewInSettings() {
+  try {
+    const data = localStorage.getItem(BG_KEY);
+    const dim  = parseInt(localStorage.getItem(DIM_KEY)||'40');
+    updateBgPreview(data||null, dim);
+  } catch(_){}
+}
 
 // ─── DIM BANNER ────────────────────────────────────────────────────
 /*
@@ -692,6 +842,7 @@ document.addEventListener('touchstart',startSilentAudio, {once:false});
 (function boot() {
   load();
   applyTheme(C.theme);
+  loadBg();
   applyVis();
   tick();
   setInterval(tick, 1000);
