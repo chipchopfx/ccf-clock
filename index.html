@@ -24,6 +24,7 @@
       --clk-h:    var(--clk);
       --clk-sep:  var(--clk);
       --clk-m:    var(--clk);
+      --clk-s:    var(--sec);
       --clk-day:  var(--acc);
       --clk-date: var(--acc);
     }
@@ -95,6 +96,17 @@
     #time-h   { color: var(--clk-h);   transition: color .5s; }
     #time-sep { color: var(--clk-sep); transition: color .5s; }
     #time-m   { color: var(--clk-m);   transition: color .5s; }
+    #time-s {
+      font-size: 0.36em;
+      color: var(--clk-s);
+      vertical-align: super;
+      margin-left: 0.12em;
+      font-weight: 300;
+      font-style: normal;
+      letter-spacing: 0.02em;
+      display: none;
+      transition: color .5s;
+    }
 
     #date {
       font-size: clamp(14px, 2vw, 22px);
@@ -355,7 +367,7 @@
   <!-- CENTER: large clock -->
   <div id="clock-area">
     <div id="time">
-      <span id="time-h">00</span><span id="time-sep">:</span><span id="time-m">00</span>
+      <span id="time-h">00</span><span id="time-sep">:</span><span id="time-m">00</span><span id="time-s">00</span>
     </div>
     <div id="date">
       <span id="date-day"></span><span class="date-sep">, </span><span id="date-dm"></span>
@@ -406,9 +418,9 @@
   <!-- FONT STYLE -->
   <div class="s-sec">Gaya Font</div>
   <div class="style-row">
-    <button class="st-btn" id="st-normal" onclick="setClockStyle('normal')">Normal</button>
-    <button class="st-btn" id="st-bold"   onclick="setClockStyle('bold')"><strong>Bold</strong></button>
-    <button class="st-btn" id="st-italic" onclick="setClockStyle('italic')"><em>Italic</em></button>
+    <button class="st-btn" id="st-normal" onclick="applyClockStyle('normal')">Normal</button>
+    <button class="st-btn" id="st-bold"   onclick="applyClockStyle('bold')"><strong>Bold</strong></button>
+    <button class="st-btn" id="st-italic" onclick="applyClockStyle('italic')"><em>Italic</em></button>
   </div>
 
   <!-- FONT COLORS -->
@@ -426,6 +438,13 @@
       <div class="color-row">
         <input type="color" id="cp-m" value="#ffffff">
         <button class="color-reset" onclick="resetColor('m')">↺ Reset</button>
+      </div>
+    </div>
+    <div class="color-item">
+      <div class="color-label">Detik (Seconds)</div>
+      <div class="color-row">
+        <input type="color" id="cp-s" value="#666666">
+        <button class="color-reset" onclick="resetColor('s')">↺ Reset</button>
       </div>
     </div>
     <div class="color-item">
@@ -462,6 +481,10 @@
 
   <!-- DISPLAY TOGGLES -->
   <div class="s-sec">Display</div>
+  <div class="tog-row">
+    <div class="tog-name">Show seconds</div>
+    <label class="sw"><input type="checkbox" id="tog-secs"><div class="sw-t"></div></label>
+  </div>
   <div class="tog-row">
     <div class="tog-name">Show date</div>
     <label class="sw"><input type="checkbox" id="tog-date" checked><div class="sw-t"></div></label>
@@ -551,11 +574,11 @@ const FONTS = [
 // ─── CONFIG ────────────────────────────────────────────────────────
 let C = {
   theme:'midnight',
-  showDate:true, showWx:true, showCal:true,
+  showDate:true, showWx:true, showCal:true, showSecs:false,
   wxKey:'', wxCity:'Semarang', icsUrl:'',
   clockFont:'system',
   clockStyle:'normal',   // normal | bold | italic
-  colorH:'', colorM:'', colorDay:'', colorDate:'',
+  colorH:'', colorM:'', colorS:'', colorDay:'', colorDate:'',
 };
 const load = () => { try { Object.assign(C, JSON.parse(localStorage.getItem('ccf3')||'{}')); } catch(_){} };
 const save = () => { try { localStorage.setItem('ccf3', JSON.stringify(C)); } catch(_){} };
@@ -628,15 +651,15 @@ function buildFontBtns() {
   colorH/M/Day/Date stored as hex in C.
   Empty string = inherit from CSS var (theme default).
 */
-const COLOR_VARS = { h:'--clk-h', m:'--clk-m', day:'--clk-day', date:'--clk-date' };
+const COLOR_VARS = { h:'--clk-h', m:'--clk-m', s:'--clk-s', day:'--clk-day', date:'--clk-date' };
 
 function applyClockColors() {
   const t = T[C.theme] || T.midnight;
-  const defaults = { h:t.clk, m:t.clk, day:t.acc, date:t.acc };
-  const s = document.documentElement.style;
+  const defaults = { h:t.clk, m:t.clk, s:t.sec, day:t.acc, date:t.acc };
+  const st = document.documentElement.style;
   Object.keys(COLOR_VARS).forEach(k => {
-    const val = C[`color${k.charAt(0).toUpperCase()+k.slice(1)}`];
-    s.setProperty(COLOR_VARS[k], val || defaults[k]);
+    const ckey = `color${k.charAt(0).toUpperCase()+k.slice(1)}`;
+    st.setProperty(COLOR_VARS[k], C[ckey] || defaults[k]);
   });
 }
 
@@ -644,17 +667,16 @@ function resetColor(k) {
   const key = `color${k.charAt(0).toUpperCase()+k.slice(1)}`;
   C[key] = '';
   applyClockColors();
-  // Reset picker display to current theme default
   const t = T[C.theme] || T.midnight;
-  const defaults = { h:t.clk, m:t.clk, day:t.acc, date:t.acc };
+  const defaults = { h:t.clk, m:t.clk, s:t.sec, day:t.acc, date:t.acc };
   const picker = document.getElementById(`cp-${k}`);
   if (picker) picker.value = defaults[k];
 }
 
 function initColorPickers() {
   const t = T[C.theme] || T.midnight;
-  const defaults = { h:t.clk, m:t.clk, day:t.acc, date:t.acc };
-  ['h','m','day','date'].forEach(k => {
+  const defaults = { h:t.clk, m:t.clk, s:t.sec, day:t.acc, date:t.acc };
+  ['h','m','s','day','date'].forEach(k => {
     const key = `color${k.charAt(0).toUpperCase()+k.slice(1)}`;
     const picker = document.getElementById(`cp-${k}`);
     if (picker) picker.value = C[key] || defaults[k];
@@ -670,6 +692,13 @@ function tick() {
   const n = new Date();
   document.getElementById('time-h').textContent = pad(n.getHours());
   document.getElementById('time-m').textContent = pad(n.getMinutes());
+  const secEl = document.getElementById('time-s');
+  if (C.showSecs) {
+    secEl.textContent = pad(n.getSeconds());
+    secEl.style.display = '';
+  } else {
+    secEl.style.display = 'none';
+  }
   if (C.showDate) {
     document.getElementById('date-day').textContent = WDAY[n.getDay()];
     document.getElementById('date-dm').textContent  = `${n.getDate()} ${MON[n.getMonth()]} ${n.getFullYear()}`;
@@ -860,6 +889,7 @@ function openSettings() {
   document.getElementById('s-wx-key').value   = C.wxKey;
   document.getElementById('s-wx-city').value  = C.wxCity;
   document.getElementById('s-ics-url').value  = C.icsUrl;
+  document.getElementById('tog-secs').checked = C.showSecs;
   document.getElementById('tog-date').checked = C.showDate;
   document.getElementById('tog-wx').checked   = C.showWx;
   document.getElementById('tog-cal').checked  = C.showCal;
@@ -881,12 +911,13 @@ function saveSettings() {
   C.wxKey    = document.getElementById('s-wx-key').value.trim();
   C.wxCity   = document.getElementById('s-wx-city').value.trim() || 'Semarang';
   C.icsUrl   = document.getElementById('s-ics-url').value.trim();
+  C.showSecs = document.getElementById('tog-secs').checked;
   C.showDate = document.getElementById('tog-date').checked;
   C.showWx   = document.getElementById('tog-wx').checked;
   C.showCal  = document.getElementById('tog-cal').checked;
 
   // Read color pickers
-  ['h','m','day','date'].forEach(k => {
+  ['h','m','s','day','date'].forEach(k => {
     const key = `color${k.charAt(0).toUpperCase()+k.slice(1)}`;
     const picker = document.getElementById(`cp-${k}`);
     if (picker) {
