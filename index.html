@@ -695,7 +695,7 @@ function tick() {
   const secEl = document.getElementById('time-s');
   if (C.showSecs) {
     secEl.textContent = pad(n.getSeconds());
-    secEl.style.display = '';
+    secEl.style.display = 'inline';
   } else {
     secEl.style.display = 'none';
   }
@@ -931,6 +931,7 @@ function saveSettings() {
   closeSettings();
   applyVis();
   applyClockColors();
+  tick();
   fetchWeather();
   fetchCalendar();
 }
