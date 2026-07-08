@@ -8,6 +8,8 @@
   <meta name="apple-mobile-web-app-title" content="CcF Clock">
   <meta name="theme-color" content="#000000">
   <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,300;0,700;1,300&display=swap" rel="stylesheet">
   <title>CcF Clock</title>
@@ -116,6 +118,20 @@
     #date-day  { color: var(--clk-day);  transition: color .5s; }
     .date-sep  { color: var(--acc);      transition: color .5s; }
     #date-dm   { color: var(--clk-date); transition: color .5s; }
+
+    /* ── Market ticker (TradingView) — one card per symbol, all visible at once ── */
+    #mkt-wrap {
+      flex-shrink: 0;
+      height: clamp(110px, 24vh, 185px);
+      margin: 0 0 12px;
+    }
+    #mkt-widget { width:100%; height:100%; display:flex; gap:8px; }
+    .mkt-card {
+      flex: 1; min-width: 0;
+      border-radius: 10px;
+      overflow: hidden;
+      background: rgba(255,255,255,0.04);
+    }
 
     /* ── Bottom row: weather LEFT | calendar RIGHT ── */
     #bottom-row {
@@ -336,6 +352,34 @@
       #time { font-size:clamp(80px,15vw,120px); }
       #clock-area { padding-bottom:10px; }
     }
+
+    /* ── Large screens (iPad and up) — scale elements up ──
+       Gated on BOTH width and height so iPhone landscape (wide but short)
+       and iPhone portrait (tall but narrow) are excluded. */
+    @media (min-width:700px) and (min-height:700px) {
+      #time { font-size: clamp(170px, 17vw, 260px); }
+      #date { font-size: clamp(20px, 2.4vw, 30px); }
+      #clock-area { gap: 12px; padding-bottom: 40px; }
+
+      #wx-wrap   { max-width: 460px; gap: 6px; }
+      #wx-emoji  { font-size: 34px; }
+      #wx-temp   { font-size: 42px; }
+      #wx-desc   { font-size: 17px; }
+      #wx-detail { font-size: 14px; }
+      #wx-city   { font-size: 14px; }
+
+      .fc-chip { padding: 6px 13px; }
+      .fc-time { font-size: 13px; }
+      .fc-icon { font-size: 23px; }
+      .fc-temp { font-size: 16px; }
+      .fc-rain { font-size: 12px; }
+
+      .cal-label { font-size: 11px; }
+      .ev-time   { font-size: 12px; }
+      .ev-title  { font-size: 15px; }
+
+      #mkt-wrap { height: clamp(150px, 26vh, 230px); }
+    }
   </style>
 </head>
 
@@ -372,6 +416,11 @@
     <div id="date">
       <span id="date-day"></span><span class="date-sep">, </span><span id="date-dm"></span>
     </div>
+  </div>
+
+  <!-- MARKET TICKER (TradingView) -->
+  <div id="mkt-wrap">
+    <div id="mkt-widget"></div>
   </div>
 
   <!-- BOTTOM: weather (left) | calendar (right) -->
@@ -497,6 +546,10 @@
     <div class="tog-name">Show calendar</div>
     <label class="sw"><input type="checkbox" id="tog-cal" checked><div class="sw-t"></div></label>
   </div>
+  <div class="tog-row">
+    <div class="tog-name">Show market ticker</div>
+    <label class="sw"><input type="checkbox" id="tog-mkt" checked><div class="sw-t"></div></label>
+  </div>
 
   <!-- WEATHER -->
   <div class="s-sec">Weather — OpenWeatherMap</div>
@@ -521,6 +574,15 @@
     ① <strong>calendar.google.com</strong> (desktop) → ⚙️ Settings<br>
     ② Pilih kalender di sidebar → scroll bawah<br>
     ③ Copy <strong>"Secret address in iCal format"</strong> → paste di sini
+  </div>
+
+  <!-- MARKET TICKER -->
+  <div class="s-sec">Market Ticker — TradingView</div>
+  <input class="s-inp" id="s-mkt-symbols" type="text" placeholder="VANTAGE:XAUUSD,VANTAGE:USDJPY,VANTAGE:NAS100,VANTAGE:BTCUSD"
+    autocorrect="off" autocapitalize="none" spellcheck="false">
+  <div class="info-box">
+    Format <strong>EXCHANGE:SYMBOL</strong> dipisah koma, TF tetap 30 menit.<br>
+    Default (broker <strong>Vantage</strong>): <strong>XAUUSD, USDJPY, NAS100 (US100 Cash), BTCUSD</strong>
   </div>
 
   <!-- CHARGE -->
@@ -572,10 +634,11 @@ const FONTS = [
 ];
 
 // ─── CONFIG ────────────────────────────────────────────────────────
+const DEFAULT_MKT_SYMBOLS = 'VANTAGE:XAUUSD,VANTAGE:USDJPY,VANTAGE:NAS100,VANTAGE:BTCUSD';
 let C = {
   theme:'midnight',
-  showDate:true, showWx:true, showCal:true, showSecs:false,
-  wxKey:'', wxCity:'Semarang', icsUrl:'',
+  showDate:true, showWx:true, showCal:true, showSecs:false, showMkt:true,
+  wxKey:'', wxCity:'Semarang', icsUrl:'', mktSymbols:DEFAULT_MKT_SYMBOLS,
   clockFont:'system',
   clockStyle:'normal',   // normal | bold | italic
   colorH:'', colorM:'', colorS:'', colorDay:'', colorDate:'',
@@ -884,15 +947,80 @@ function renderEvents(evts) {
     </div>`).join('');
 }
 
+// ─── MARKET TICKER (TradingView) ────────────────────────────────────
+// One mini widget per symbol so all tickers' charts are visible at once
+// (a single multi-symbol widget only shows one chart at a time via tabs).
+function buildMarketWidget() {
+  const wrap = document.getElementById('mkt-widget');
+  wrap.innerHTML = '';
+  if (!C.showMkt) return;
+  const syms = C.mktSymbols.split(',').map(s=>s.trim()).filter(Boolean);
+  if (!syms.length) return;
+
+  const big = window.matchMedia('(min-width:700px) and (min-height:700px)').matches;
+
+  syms.forEach(s => {
+    const card = document.createElement('div');
+    card.className = 'mkt-card';
+
+    const container = document.createElement('div');
+    container.className = 'tradingview-widget-container';
+    container.style.cssText = 'height:100%;width:100%;';
+    const widgetDiv = document.createElement('div');
+    widgetDiv.className = 'tradingview-widget-container__widget';
+    widgetDiv.style.cssText = 'height:100%;width:100%;';
+    container.appendChild(widgetDiv);
+
+    const cfg = {
+      symbols: [[s.includes(':') ? s.split(':')[1] : s, s]],
+      chartOnly: false,
+      width: '100%',
+      height: '100%',
+      locale: 'en',
+      colorTheme: 'dark',
+      autosize: true,
+      showVolume: false,
+      showMA: false,
+      hideDateRanges: true,
+      hideMarketStatus: true,
+      hideSymbolLogo: true,
+      scalePosition: 'no',
+      scaleMode: 'Normal',
+      fontFamily: '-apple-system, Helvetica Neue, Arial, sans-serif',
+      fontSize: big ? '13' : '10',
+      noTimeScale: true,
+      valuesTracking: '1',
+      changeMode: 'percent',
+      chartType: 'area',
+      isTransparent: true,
+      backgroundColor: 'rgba(0,0,0,0)',
+      lineWidth: 2,
+      lineType: 0,
+      dateRanges: ['1d|30'],
+    };
+    const script = document.createElement('script');
+    script.type = 'text/javascript';
+    script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-symbol-overview.js';
+    script.async = true;
+    script.text = JSON.stringify(cfg);
+    container.appendChild(script);
+
+    card.appendChild(container);
+    wrap.appendChild(card);
+  });
+}
+
 // ─── SETTINGS ──────────────────────────────────────────────────────
 function openSettings() {
   document.getElementById('s-wx-key').value   = C.wxKey;
   document.getElementById('s-wx-city').value  = C.wxCity;
   document.getElementById('s-ics-url').value  = C.icsUrl;
+  document.getElementById('s-mkt-symbols').value = C.mktSymbols;
   document.getElementById('tog-secs').checked = C.showSecs;
   document.getElementById('tog-date').checked = C.showDate;
   document.getElementById('tog-wx').checked   = C.showWx;
   document.getElementById('tog-cal').checked  = C.showCal;
+  document.getElementById('tog-mkt').checked  = C.showMkt;
   setBadge(C.wxKey ? 'Configured — tap Test to verify' : 'Not configured', 'info');
   buildThemeBtns();
   buildFontBtns();
@@ -911,10 +1039,12 @@ function saveSettings() {
   C.wxKey    = document.getElementById('s-wx-key').value.trim();
   C.wxCity   = document.getElementById('s-wx-city').value.trim() || 'Semarang';
   C.icsUrl   = document.getElementById('s-ics-url').value.trim();
+  C.mktSymbols = document.getElementById('s-mkt-symbols').value.trim() || DEFAULT_MKT_SYMBOLS;
   C.showSecs = document.getElementById('tog-secs').checked;
   C.showDate = document.getElementById('tog-date').checked;
   C.showWx   = document.getElementById('tog-wx').checked;
   C.showCal  = document.getElementById('tog-cal').checked;
+  C.showMkt  = document.getElementById('tog-mkt').checked;
 
   // Read color pickers
   ['h','m','s','day','date'].forEach(k => {
@@ -934,11 +1064,13 @@ function saveSettings() {
   tick();
   fetchWeather();
   fetchCalendar();
+  buildMarketWidget();
 }
 
 function applyVis() {
   document.getElementById('wx-wrap').style.display  = C.showWx  ? '' : 'none';
   document.getElementById('cal-wrap').style.display = C.showCal ? '' : 'none';
+  document.getElementById('mkt-wrap').style.display = C.showMkt ? '' : 'none';
 }
 
 document.getElementById('overlay').addEventListener('click', e => {
@@ -1079,6 +1211,7 @@ document.addEventListener('touchstart',startSilentAudio);
   setInterval(tick, 1000);
   keepAwake();
   initDimBanner();
+  buildMarketWidget();
   setTimeout(()=>fetchWeather(),  500);
   setTimeout(()=>fetchCalendar(), 1000);
   setInterval(()=>fetchWeather(),  15*60_000);
