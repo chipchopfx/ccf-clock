@@ -357,9 +357,9 @@
        Gated on BOTH width and height so iPhone landscape (wide but short)
        and iPhone portrait (tall but narrow) are excluded. */
     @media (min-width:700px) and (min-height:700px) {
-      #time { font-size: clamp(170px, 17vw, 260px); }
-      #date { font-size: clamp(20px, 2.4vw, 30px); }
-      #clock-area { gap: 12px; padding-bottom: 40px; }
+      #time { font-size: clamp(204px, 20.4vw, 312px); }
+      #date { font-size: clamp(24px, 2.9vw, 36px); }
+      #clock-area { gap: 12px; padding-bottom: 20px; }
 
       #wx-wrap   { max-width: 460px; gap: 6px; }
       #wx-emoji  { font-size: 34px; }
@@ -378,7 +378,7 @@
       .ev-time   { font-size: 12px; }
       .ev-title  { font-size: 15px; }
 
-      #mkt-wrap { height: clamp(150px, 26vh, 230px); }
+      #mkt-wrap { height: clamp(220px, 34vh, 320px); }
     }
   </style>
 </head>
@@ -637,7 +637,7 @@ const FONTS = [
 const DEFAULT_MKT_SYMBOLS = 'VANTAGE:XAUUSD,VANTAGE:USDJPY,VANTAGE:NAS100,VANTAGE:BTCUSD';
 let C = {
   theme:'midnight',
-  showDate:true, showWx:true, showCal:true, showSecs:false, showMkt:true,
+  showDate:true, showWx:true, showCal:false, showSecs:false, showMkt:true,
   wxKey:'', wxCity:'Semarang', icsUrl:'', mktSymbols:DEFAULT_MKT_SYMBOLS,
   clockFont:'system',
   clockStyle:'normal',   // normal | bold | italic
@@ -991,12 +991,18 @@ function buildMarketWidget() {
       noTimeScale: true,
       valuesTracking: '1',
       changeMode: 'percent',
-      chartType: 'area',
+      chartType: 'candlesticks',
       isTransparent: true,
       backgroundColor: 'rgba(0,0,0,0)',
       lineWidth: 2,
       lineType: 0,
       dateRanges: ['1d|30'],
+      upColor: '#FFA726',
+      downColor: '#C62828',
+      borderUpColor: '#FFA726',
+      borderDownColor: '#C62828',
+      wickUpColor: '#FFA726',
+      wickDownColor: '#C62828',
     };
     const script = document.createElement('script');
     script.type = 'text/javascript';
